@@ -19,6 +19,11 @@ const punishCommand = new SlashCommandBuilder()
   .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
 
+const clearPunishCommand = new SlashCommandBuilder()
+  .setName('clearpunish')
+  .setDescription('Remove a punishment for a Roblox user')
+  .addStringOption(opt => opt.setName('userid').setDescription('Roblox User ID').setRequired(true));
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -74,7 +79,7 @@ async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: [punishCommand.toJSON()] }
+    { body: [punishCommand.toJSON(), clearPunishCommand.toJSON()] }
   );
 }
 
@@ -92,28 +97,43 @@ async function start() {
 
   client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-    if (interaction.commandName !== 'punish') return;
 
-    const userId = interaction.options.getString('userid');
-    const type = interaction.options.getString('type');
-    const duration = interaction.options.getInteger('duration');
-    const reason = interaction.options.getString('reason');
-    const moderator = interaction.user.tag;
+    if (interaction.commandName === 'punish') {
+      const userId = interaction.options.getString('userid');
+      const type = interaction.options.getString('type');
+      const duration = interaction.options.getInteger('duration');
+      const reason = interaction.options.getString('reason');
+      const moderator = interaction.user.tag;
 
-    try {
-      await axios.post(`http://localhost:${PORT}/punishments/${userId}`, {
-        type,
-        duration,
-        reason,
-        moderator
-      });
+      try {
+        await axios.post(`http://localhost:${PORT}/punishments/${userId}`, {
+          type,
+          duration,
+          reason,
+          moderator
+        });
 
-      await interaction.reply({
-        content: `✅ Punishment applied to **${userId}**\nType: \`${type}\`\nDuration: \`${duration === 0 ? 'Permanent' : duration + 's'}\`\nReason: ${reason}`,
-        ephemeral: true
-      });
-    } catch {
-      await interaction.reply({ content: '❌ Failed to apply punishment.', ephemeral: true });
+        await interaction.reply({
+          content: `✅ Punishment applied to **${userId}**\nType: \`${type}\`\nDuration: \`${duration === 0 ? 'Permanent' : duration + 's'}\`\nReason: ${reason}`,
+          ephemeral: true
+        });
+      } catch {
+        await interaction.reply({ content: '❌ Failed to apply punishment.', ephemeral: true });
+      }
+    }
+    else if (interaction.commandName === 'clearpunish') {
+      const userId = interaction.options.getString('userid');
+
+      try {
+        await axios.delete(`http://localhost:${PORT}/punishments/${userId}`);
+
+        await interaction.reply({
+          content: `✅ Punishment removed for **${userId}**`,
+          ephemeral: true
+        });
+      } catch {
+        await interaction.reply({ content: '❌ Failed to remove punishment.', ephemeral: true });
+      }
     }
   });
 
