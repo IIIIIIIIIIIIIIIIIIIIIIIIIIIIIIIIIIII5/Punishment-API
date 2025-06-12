@@ -31,7 +31,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+
+// Fix: use express.json() instead of bodyParser for JSON parsing
+app.use(express.json());
 
 let punishments = {};
 
@@ -43,9 +45,10 @@ app.post('/punishments/:userId', (req, res) => {
     return res.status(400).json({ success: false, message: "Missing fields" });
   }
 
-  if (data.duration) {
+  if (data.duration && data.duration > 0) {
     data.expiresAt = new Date(Date.now() + (data.duration * 1000)).toISOString();
-    delete data.duration;
+  } else {
+    data.expiresAt = null; // permanent
   }
 
   data.createdAt = new Date().toISOString();
@@ -120,7 +123,8 @@ async function start() {
           content: `✅ Punishment applied to **${userId}**\nType: \`${type}\`\nDuration: \`${duration === 0 ? 'Permanent' : duration + 's'}\`\nReason: ${reason}`,
           ephemeral: true
         });
-      } catch {
+      } catch (error) {
+        console.error("Failed to apply punishment:", error.response?.data || error.message || error);
         await interaction.reply({ content: '❌ Failed to apply punishment.', ephemeral: true });
       }
     }
@@ -134,7 +138,8 @@ async function start() {
           content: `✅ Punishment removed for **${userId}**`,
           ephemeral: true
         });
-      } catch {
+      } catch (error) {
+        console.error("Failed to remove punishment:", error.response?.data || error.message || error);
         await interaction.reply({ content: '❌ Failed to remove punishment.', ephemeral: true });
       }
     }
