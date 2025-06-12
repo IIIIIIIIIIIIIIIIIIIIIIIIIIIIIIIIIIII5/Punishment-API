@@ -13,8 +13,15 @@ let punishments = {};
 app.post('/punishments/:userId', (req, res) => {
   const userId = req.params.userId;
   const data = req.body;
-  data.createdAt = Date.now();
+
+  if (data.duration) {
+    data.expiresAt = new Date(Date.now() + (data.duration * 1000)).toISOString();
+    delete data.duration;
+  }
+
+  data.createdAt = new Date().toISOString();
   punishments[userId] = data;
+
   res.json({ success: true });
 });
 
@@ -22,14 +29,16 @@ app.get('/punishments/:userId', (req, res) => {
   const userId = req.params.userId;
   const data = punishments[userId];
 
-  if (!data) return res.status(404).json({ error: 'No punishment found' });
-
-  if (data.expiresAt && Date.now() > data.expiresAt) {
-    delete punishments[userId];
-    return res.status(404).json({ error: 'Punishment expired' });
+  if (!data) {
+    return res.status(404).json([]);
   }
 
-  res.json(data);
+  if (data.expiresAt && new Date() > new Date(data.expiresAt)) {
+    delete punishments[userId];
+    return res.status(404).json([]);
+  }
+
+  res.json([data]);
 });
 
 app.delete('/punishments/:userId', (req, res) => {
