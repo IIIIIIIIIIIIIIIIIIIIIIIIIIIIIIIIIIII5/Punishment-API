@@ -6,7 +6,7 @@ const axios = require('axios');
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENTID;
-const GUILD_ID = process.env.SERVERID;
+const GUILD_ID = process.env.GUILDID;
 
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
