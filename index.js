@@ -11,8 +11,12 @@ app.use(bodyParser.json());
 let punishments = {};
 
 app.post('/punishments/:userId', (req, res) => {
-  const userId = req.params.userId;
+  const userId = String(req.params.userId);
   const data = req.body;
+
+  if (!data.type || !data.reason || !data.moderator) {
+    return res.status(400).json({ success: false, message: "Missing fields" });
+  }
 
   if (data.duration) {
     data.expiresAt = new Date(Date.now() + (data.duration * 1000)).toISOString();
@@ -26,14 +30,16 @@ app.post('/punishments/:userId', (req, res) => {
 });
 
 app.get('/punishments/:userId', (req, res) => {
-  const userId = req.params.userId;
+  const userId = String(req.params.userId);
   const data = punishments[userId];
 
   if (!data) {
     return res.status(404).json([]);
   }
 
-  if (data.expiresAt && new Date() > new Date(data.expiresAt)) {
+  const now = new Date();
+
+  if (data.expiresAt && now > new Date(data.expiresAt)) {
     delete punishments[userId];
     return res.status(404).json([]);
   }
@@ -42,7 +48,7 @@ app.get('/punishments/:userId', (req, res) => {
 });
 
 app.delete('/punishments/:userId', (req, res) => {
-  const userId = req.params.userId;
+  const userId = String(req.params.userId);
   delete punishments[userId];
   res.json({ success: true });
 });
