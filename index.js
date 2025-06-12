@@ -32,7 +32,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 
-// Fix: use express.json() instead of bodyParser for JSON parsing
 app.use(express.json());
 
 let punishments = {};
@@ -48,7 +47,7 @@ app.post('/punishments/:userId', (req, res) => {
   if (data.duration && data.duration > 0) {
     data.expiresAt = new Date(Date.now() + (data.duration * 1000)).toISOString();
   } else {
-    data.expiresAt = null; // permanent
+    data.expiresAt = null;
   }
 
   data.createdAt = new Date().toISOString();
