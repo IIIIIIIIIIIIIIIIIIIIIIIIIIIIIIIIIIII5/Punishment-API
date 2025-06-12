@@ -14,7 +14,10 @@ const punishCommand = new SlashCommandBuilder()
   .addStringOption(opt => opt.setName('userid').setDescription('Roblox User ID').setRequired(true))
   .addStringOption(opt => opt.setName('type').setDescription('Type of punishment').setRequired(true).addChoices(
     { name: 'ban', value: 'ban' },
-    { name: 'suspend', value: 'suspend' }
+    { name: 'suspend', value: 'suspend' },
+    { name: 'mute', value: 'mute' },
+    { name: 'warn', value: 'warn' },
+    { name: 'kick', value: 'kick' }
   ))
   .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
