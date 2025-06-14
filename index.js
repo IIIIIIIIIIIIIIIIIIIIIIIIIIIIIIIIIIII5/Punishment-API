@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const axios = require('axios');
 const crypto = require('crypto');
@@ -42,6 +41,7 @@ app.use(cors());
 app.use(express.json());
 
 let punishments = {};
+let deletedPunishments = {};
 
 app.post('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
@@ -62,7 +62,6 @@ app.post('/punishments/:userId', (req, res) => {
   }
 
   data.createdAt = new Date().toISOString();
-
   data.id = crypto.randomUUID();
 
   if (!punishments[userId]) punishments[userId] = [];
@@ -74,25 +73,23 @@ app.post('/punishments/:userId', (req, res) => {
 
 app.get('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
-  const userPunishments = punishments[userId];
 
-  if (!userPunishments || userPunishments.length === 0) {
+  const active = punishments[userId] || [];
+  const deleted = deletedPunishments[userId] || [];
+
+  const allPunishments = [...active, ...deleted];
+
+  if (allPunishments.length === 0) {
     return res.status(404).json([]);
   }
 
-  const now = new Date();
-  const valid = userPunishments.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
-
-  if (valid.length === 0) {
-    return res.status(404).json([]);
-  }
-
-  res.json(valid);
+  res.json(allPunishments);
 });
 
 app.delete('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
   delete punishments[userId];
+  delete deletedPunishments[userId];
   res.json({ success: true });
 });
 
@@ -100,11 +97,13 @@ app.delete('/punishments/:userId/:punishId', (req, res) => {
   const { userId, punishId } = req.params;
   if (!punishments[userId]) return res.status(404).json({ success: false, message: "User not found" });
 
-  const originalLength = punishments[userId].length;
-  punishments[userId] = punishments[userId].filter(p => p.id !== punishId);
+  const index = punishments[userId].findIndex(p => p.id === punishId);
+  if (index === -1) return res.status(404).json({ success: false, message: "Punishment ID not found" });
 
-  if (punishments[userId].length === originalLength)
-    return res.status(404).json({ success: false, message: "Punishment ID not found" });
+  const [removed] = punishments[userId].splice(index, 1);
+
+  if (!deletedPunishments[userId]) deletedPunishments[userId] = [];
+  deletedPunishments[userId].push(removed);
 
   res.json({ success: true });
 });
@@ -125,6 +124,16 @@ async function registerCommands() {
   );
 }
 
+function formatDateToLocaleShort(dateString, locale) {
+  if (!dateString) return 'Permanent';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return dateString;
+  }
+}
+
 async function start() {
   await registerCommands();
   console.log('✅ Commands registered.');
@@ -139,6 +148,8 @@ async function start() {
 
   client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+
+    const userLocale = interaction.locale || 'en-GB';
 
     if (interaction.commandName === 'punish') {
       const userId = interaction.options.getString('userid');
@@ -194,9 +205,11 @@ async function start() {
           return;
         }
 
-        const lines = data.map((p, i) =>
-          `#${i + 1} - ID: \`${p.id}\` | Type: \`${p.type}\` | Reason: \`${p.reason}\` | Mod: \`${p.moderator}\` | Exp: \`${p.expiresAt ?? 'Permanent'}\` | Date: \`${p.createdAt}\``
-        );
+        const lines = data.map((p, i) => {
+          const createdAtFormatted = formatDateToLocaleShort(p.createdAt, userLocale);
+          const expiresAtFormatted = p.expiresAt ? formatDateToLocaleShort(p.expiresAt, userLocale) : 'Permanent';
+          return `#${i + 1} - ID: \`${p.id}\` | Type: \`${p.type}\` | Reason: \`${p.reason}\` | Mod: \`${p.moderator}\` | Exp: \`${expiresAtFormatted}\` | Date: \`${createdAtFormatted}\``;
+        });
 
         await interaction.reply({
           content: `📄 Punishment history for **${userId}**:\n${lines.join('\n')}`,
