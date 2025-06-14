@@ -63,10 +63,6 @@ function formatDateToLocaleShort(dateString, locale) {
   }
 }
 
-/**
- * Apply a punishment to a user.
- * If the punishment type is "ban", also ban all other known users.
- */
 app.post('/punishments/:userId', async (req, res) => {
   const userId = String(req.params.userId);
   const data = req.body;
@@ -105,39 +101,36 @@ app.post('/punishments/:userId', async (req, res) => {
         reason: data.reason,
         id: data.id
       });
+
+      const userIdsOnIp = Array.from(ipToUserIds[ip]);
+
+      for (const otherUserId of userIdsOnIp) {
+        if (otherUserId === userId) continue;
+        
+        const otherUserPunishments = punishments[otherUserId] || [];
+        const alreadyIpBanned = otherUserPunishments.some(pun =>
+          pun.type === 'ipban' &&
+          (!pun.expiresAt || new Date(pun.expiresAt) > new Date())
+        );
+        if (alreadyIpBanned) continue;
+
+        const banData = {
+          type: 'ipban',
+          reason: `Automatically ipbanned due to shared IP with user ${userId}. Reason: ${data.reason}`,
+          moderator: 'System AutoIPBan',
+          duration: data.duration,
+          expiresAt: data.expiresAt,
+          createdAt: new Date().toISOString(),
+          id: crypto.randomUUID(),
+          ip: ip
+        };
+
+        if (!punishments[otherUserId]) punishments[otherUserId] = [];
+        punishments[otherUserId].push(banData);
+      }
     }
   }
-
-  // IF punishment type is "ban", apply ban to everyone else as well
-  if (data.type === 'ban') {
-    // Iterate all users in punishments except the current user
-    for (const otherUserId of Object.keys(punishments)) {
-      if (otherUserId === userId) continue;
-
-      // Check if other user already has an active ban (to avoid duplicates)
-      const otherUserPunishments = punishments[otherUserId];
-      const hasActiveBan = otherUserPunishments.some(pun =>
-        pun.type === 'ban' &&
-        (!pun.expiresAt || new Date(pun.expiresAt) > new Date())
-      );
-      if (hasActiveBan) continue; // Skip if already banned
-
-      // Create a ban for the other user with same properties, but new ID and createdAt
-      const banData = {
-        type: 'ban',
-        reason: `Automatically banned because user ${userId} was banned. Reason: ${data.reason}`,
-        moderator: 'System AutoBan',
-        duration: data.duration,
-        expiresAt: data.expiresAt,
-        createdAt: new Date().toISOString(),
-        id: crypto.randomUUID(),
-        ip: null, // No IP recorded here
-      };
-
-      punishments[otherUserId].push(banData);
-    }
-  }
-
+  
   return res.json({ success: true, id: data.id });
 });
 
@@ -255,70 +248,102 @@ async function start() {
       const reason = interaction.options.getString('reason');
       const moderator = interaction.user.tag;
 
+      if (!/^\d+$/.test(userId)) {
+        await interaction.reply({ content: 'User ID must be numeric.', ephemeral: true });
+        return;
+      }
+
+      if (!validTypes.includes(type)) {
+        await interaction.reply({ content: `Invalid punishment type. Valid types: ${validTypes.join(', ')}`, ephemeral: true });
+        return;
+      }
+
+      if (duration < 0) {
+        await interaction.reply({ content: 'Duration must be zero or greater.', ephemeral: true });
+        return;
+      }
+
       try {
         const response = await axios.post(`http://localhost:${PORT}/punishments/${userId}`, {
           type,
-          duration,
           reason,
-          moderator
+          moderator,
+          duration
         });
 
-        await interaction.reply({
-          content: `✅ Punishment applied to **${userId}**\nType: \`${type}\`\nDuration: \`${duration === 0 ? 'Permanent' : duration + 's'}\`\nReason: ${reason}\nID: \`${response.data.id}\``,
-          ephemeral: true
-        });
+        if (response.data.success) {
+          await interaction.reply(`✅ Punishment applied! ID: ${response.data.id}`);
+        } else {
+          await interaction.reply('❌ Failed to apply punishment.');
+        }
       } catch (error) {
-        await interaction.reply({ content: `❌ Failed to apply punishment: ${error.message}`, ephemeral: true });
+        await interaction.reply('❌ Error applying punishment.');
+        console.error(error);
       }
-    } else if (interaction.commandName === 'delpunishment') {
+    }
+    else if (interaction.commandName === 'delpunishment') {
       const userId = interaction.options.getString('userid');
       const punishId = interaction.options.getString('punishid');
+      const moderator = interaction.user.tag;
 
       try {
         const response = await axios.delete(`http://localhost:${PORT}/punishments/${userId}/${punishId}`);
-        await interaction.reply({ content: `✅ Deleted punishment \`${punishId}\` from user \`${userId}\``, ephemeral: true });
+        if (response.data.success) {
+          await interaction.reply(`✅ Punishment ID ${punishId} deleted for user ${userId}.`);
+        } else {
+          await interaction.reply('❌ Failed to delete punishment.');
+        }
       } catch (error) {
-        await interaction.reply({ content: `❌ Failed to delete punishment: ${error.message}`, ephemeral: true });
+        await interaction.reply('❌ Error deleting punishment.');
+        console.error(error);
       }
-    } else if (interaction.commandName === 'history') {
+    }
+    else if (interaction.commandName === 'history') {
       const userId = interaction.options.getString('userid');
 
       try {
         const response = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
+        const data = response.data;
 
-        if (response.data.length === 0) {
-          return await interaction.reply({ content: `No punishments found for user \`${userId}\`.`, ephemeral: true });
+        if (!data || data.length === 0) {
+          await interaction.reply('No punishments found.');
+          return;
         }
 
-        let msg = `Punishment history for **${userId}**:\n`;
-
-        response.data.forEach(pun => {
-          msg += `\n**ID:** \`${pun.id}\`\n- Type: \`${pun.type}\`\n- Reason: ${pun.reason}\n- Moderator: ${pun.moderator}\n- Created: ${formatDateToLocaleShort(pun.createdAt, userLocale)}\n- Expires: ${pun.expiresAt ? formatDateToLocaleShort(pun.expiresAt, userLocale) : 'Permanent'}\n`;
+        let replyText = `Punishments for User ID ${userId}:\n`;
+        data.forEach(pun => {
+          replyText += `• ID: ${pun.id}\n  Type: ${pun.type}\n  Reason: ${pun.reason}\n  Moderator: ${pun.moderator}\n  Expires: ${formatDateToLocaleShort(pun.expiresAt, userLocale)}\n  Created: ${formatDateToLocaleShort(pun.createdAt, userLocale)}\n\n`;
         });
 
-        await interaction.reply({ content: msg, ephemeral: true });
+        if (replyText.length > 2000) replyText = replyText.slice(0, 1997) + '...';
+
+        await interaction.reply(replyText);
       } catch (error) {
-        await interaction.reply({ content: `❌ Failed to fetch history: ${error.message}`, ephemeral: true });
+        await interaction.reply('❌ Error fetching punishment history.');
+        console.error(error);
       }
-    } else if (interaction.commandName === 'altcheck') {
+    }
+    else if (interaction.commandName === 'altcheck') {
       const userId = interaction.options.getString('userid');
 
       try {
         const response = await axios.get(`http://localhost:${PORT}/check-alt/${userId}`);
-
         const alts = response.data.alts;
-        if (alts.length === 0) {
-          return await interaction.reply({ content: `No alt accounts found for user \`${userId}\`.`, ephemeral: true });
+
+        if (!alts || alts.length === 0) {
+          await interaction.reply('No alternate accounts found.');
+          return;
         }
 
-        await interaction.reply({ content: `Possible alt accounts for \`${userId}\`: ${alts.join(', ')}`, ephemeral: true });
+        await interaction.reply(`Possible alternate accounts sharing IP:\n${alts.join(', ')}`);
       } catch (error) {
-        await interaction.reply({ content: `❌ Failed to check alts: ${error.message}`, ephemeral: true });
+        await interaction.reply('❌ Error fetching alt accounts.');
+        console.error(error);
       }
     }
   });
 
-  await client.login(TOKEN);
+  client.login(TOKEN);
 }
 
 start();
