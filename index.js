@@ -34,14 +34,32 @@ const historyCommand = new SlashCommandBuilder()
   .setDescription('View punishment history of a Roblox user')
   .addStringOption(opt => opt.setName('userid').setDescription('Roblox User ID').setRequired(true));
 
+const altCheckCommand = new SlashCommandBuilder()
+  .setName('altcheck')
+  .setDescription('Check for possible alt accounts based on IP sharing')
+  .addStringOption(opt => opt.setName('userid').setDescription('Roblox User ID').setRequired(true));
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
+// In-memory data stores
 let punishments = {};
 let deletedPunishments = {};
+
+const ipToUserIds = {};
+
+function formatDateToLocaleShort(dateString, locale) {
+  if (!dateString) return 'Permanent';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return dateString;
+  }
+}
 
 app.post('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
@@ -64,9 +82,17 @@ app.post('/punishments/:userId', (req, res) => {
   data.createdAt = new Date().toISOString();
   data.id = crypto.randomUUID();
 
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || null;
+  data.ip = ip;
+
   if (!punishments[userId]) punishments[userId] = [];
 
   punishments[userId].push(data);
+
+  if (ip) {
+    if (!ipToUserIds[ip]) ipToUserIds[ip] = new Set();
+    ipToUserIds[ip].add(userId);
+  }
 
   res.json({ success: true, id: data.id });
 });
@@ -108,6 +134,29 @@ app.delete('/punishments/:userId/:punishId', (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/check-alt/:userId', (req, res) => {
+  const userId = String(req.params.userId);
+
+  let userIps = new Set();
+  const userPunishments = punishments[userId] || [];
+  userPunishments.forEach(pun => {
+    if (pun.ip) userIps.add(pun.ip);
+  });
+
+  let altUsers = new Set();
+
+  userIps.forEach(ip => {
+    const usersWithIp = ipToUserIds[ip];
+    if (usersWithIp) {
+      usersWithIp.forEach(otherId => {
+        if (otherId !== userId) altUsers.add(otherId);
+      });
+    }
+  });
+
+  res.json({ alts: Array.from(altUsers) });
+});
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 async function registerCommands() {
@@ -118,20 +167,11 @@ async function registerCommands() {
       body: [
         punishCommand.toJSON(),
         delPunishmentCommand.toJSON(),
-        historyCommand.toJSON()
+        historyCommand.toJSON(),
+        altCheckCommand.toJSON()
       ]
     }
   );
-}
-
-function formatDateToLocaleShort(dateString, locale) {
-  if (!dateString) return 'Permanent';
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
-  } catch {
-    return dateString;
-  }
 }
 
 async function start() {
@@ -208,16 +248,40 @@ async function start() {
         const lines = data.map((p, i) => {
           const createdAtFormatted = formatDateToLocaleShort(p.createdAt, userLocale);
           const expiresAtFormatted = p.expiresAt ? formatDateToLocaleShort(p.expiresAt, userLocale) : 'Permanent';
-          return `#${i + 1} - ID: \`${p.id}\` | Type: \`${p.type}\` | Reason: \`${p.reason}\` | Mod: \`${p.moderator}\` | Exp: \`${expiresAtFormatted}\` | Date: \`${createdAtFormatted}\``;
-        });
+          return `#${i + 1} [${p.type}] ${p.reason} | By: ${p.moderator} | Created: ${createdAtFormatted} | Expires: ${expiresAtFormatted} | ID: \`${p.id}\``;
+        }).join('\n');
 
-        await interaction.reply({
-          content: `📄 Punishment history for **${userId}**:\n${lines.join('\n')}`,
-          ephemeral: true
-        });
+        const chunks = [];
+        const chunkSize = 1900;
+        for (let i = 0; i < lines.length; i += chunkSize) {
+          chunks.push(lines.substring(i, i + chunkSize));
+        }
+
+        await interaction.reply({ content: chunks[0], ephemeral: true });
+        for (let i = 1; i < chunks.length; i++) {
+          await interaction.followUp({ content: chunks[i], ephemeral: true });
+        }
       } catch (error) {
-        console.error("Failed to get punishment history:", error.response?.data || error.message || error);
-        await interaction.reply({ content: '❌ Failed to fetch punishment history.', ephemeral: true });
+        console.error("Failed to fetch history:", error.response?.data || error.message || error);
+        await interaction.reply({ content: '❌ Failed to get punishment history.', ephemeral: true });
+      }
+    }
+
+    else if (interaction.commandName === 'altcheck') {
+      const userId = interaction.options.getString('userid');
+
+      try {
+        const response = await axios.get(`http://localhost:${PORT}/check-alt/${userId}`);
+        const alts = response.data.alts;
+
+        if (alts.length === 0) {
+          await interaction.reply({ content: `✅ No alt accounts found for user ID **${userId}** based on shared IPs.`, ephemeral: true });
+        } else {
+          await interaction.reply({ content: `⚠️ Possible alt accounts for user ID **${userId}** (shared IP punishments):\n${alts.map(id => `• ${id}`).join('\n')}`, ephemeral: true });
+        }
+      } catch (error) {
+        console.error("Alt check failed:", error.response?.data || error.message || error);
+        await interaction.reply({ content: '❌ Failed to check for alts.', ephemeral: true });
       }
     }
   });
