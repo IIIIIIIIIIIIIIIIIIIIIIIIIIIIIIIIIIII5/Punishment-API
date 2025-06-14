@@ -8,6 +8,8 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENTID;
 const GUILD_ID = process.env.GUILDID;
 
+const validTypes = ['ban', 'warn', 'toolban'];
+
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
   .setDescription('Apply a punishment to a Roblox user')
@@ -40,6 +42,10 @@ app.post('/punishments/:userId', (req, res) => {
 
   if (!data.type || !data.reason || !data.moderator) {
     return res.status(400).json({ success: false, message: "Missing fields" });
+  }
+
+  if (!validTypes.includes(data.type)) {
+    return res.status(400).json({ success: false, message: "Invalid punishment type" });
   }
 
   if (data.duration && data.duration > 0) {
