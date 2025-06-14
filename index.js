@@ -8,7 +8,7 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENTID;
 const GUILD_ID = process.env.GUILDID;
 
-const validTypes = ['ban', 'warn', 'toolban'];
+const validTypes = ['ban', 'warn', 'toolban', 'kick'];
 
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
@@ -18,6 +18,7 @@ const punishCommand = new SlashCommandBuilder()
     { name: 'ban', value: 'ban' },
     { name: 'warn', value: 'warn' },
     { name: 'toolban', value: 'toolban' },
+    { name: 'kick', value: 'kick' },
   ))
   .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
@@ -26,6 +27,15 @@ const clearPunishCommand = new SlashCommandBuilder()
   .setName('clearpunish')
   .setDescription('Remove a punishment for a Roblox user')
   .addStringOption(opt => opt.setName('userid').setDescription('Roblox User ID').setRequired(true));
+
+const historyCommand = new SlashCommandBuilder()
+  .setName('history')
+  .setDescription('View punishment history of a Roblox user')
+  .addStringOption(opt => 
+    opt.setName('userid')
+      .setDescription('Roblox User ID')
+      .setRequired(true)
+  );
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -88,7 +98,13 @@ async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(TOKEN);
   await rest.put(
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: [punishCommand.toJSON(), clearPunishCommand.toJSON()] }
+    {
+      body: [
+        punishCommand.toJSON(),
+        clearPunishCommand.toJSON(),
+        historyCommand.toJSON()
+      ]
+    }
   );
 }
 
