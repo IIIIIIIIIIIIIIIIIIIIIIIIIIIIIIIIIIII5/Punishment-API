@@ -60,24 +60,30 @@ app.post('/punishments/:userId', (req, res) => {
   }
 
   data.createdAt = new Date().toISOString();
-  punishments[userId] = data;
+
+  if (!punishments[userId]) punishments[userId] = [];
+
+  punishments[userId].push(data);
 
   res.json({ success: true });
 });
 
 app.get('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
-  const data = punishments[userId];
+  const userPunishments = punishments[userId];
 
-  if (!data) return res.status(404).json([]);
-
-  const now = new Date();
-  if (data.expiresAt && now > new Date(data.expiresAt)) {
-    delete punishments[userId];
+  if (!userPunishments || userPunishments.length === 0) {
     return res.status(404).json([]);
   }
 
-  res.json([data]);
+  const now = new Date();
+  const valid = userPunishments.filter(p => !p.expiresAt || new Date(p.expiresAt) > now);
+
+  if (valid.length === 0) {
+    return res.status(404).json([]);
+  }
+
+  res.json(valid);
 });
 
 app.delete('/punishments/:userId', (req, res) => {
@@ -159,27 +165,28 @@ async function start() {
     }
 
     else if (interaction.commandName === 'history') {
-      const userId = interaction.options.getString('userid');
+  const userId = interaction.options.getString('userid');
 
-      try {
-        const response = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
-        const data = response.data;
+  try {
+    const response = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
+    const data = response.data;
 
-        if (!data.length) {
-          await interaction.reply({ content: `ℹ️ No punishment history found for user ID **${userId}**.`, ephemeral: true });
-          return;
-        }
-
-        const punishment = data[0];
-        await interaction.reply({
-          content: `📄 Punishment history for **${userId}**:\n- Type: \`${punishment.type}\`\n- Reason: \`${punishment.reason}\`\n- Moderator: \`${punishment.moderator}\`\n- Expires: \`${punishment.expiresAt ?? 'Permanent'}\`\n- Created: \`${punishment.createdAt}\``,
-          ephemeral: true
-        });
-      } catch (error) {
-        console.error("Failed to get punishment history:", error.response?.data || error.message || error);
-        await interaction.reply({ content: '❌ Failed to fetch punishment history.', ephemeral: true });
-      }
+    if (!data.length) {
+      await interaction.reply({ content: `ℹNo punishment history found for user ID **${userId}**.`, ephemeral: true });
+      return;
     }
+
+    const lines = data.map((p, i) => `#${i + 1} - Type: \`${p.type}\` | Reason: \`${p.reason}\` | Mod: \`${p.moderator}\` | Exp: \`${p.expiresAt ?? 'Permanent'}\` | Date: \`${p.createdAt}\``);
+
+    await interaction.reply({
+      content: `📄 Punishment history for **${userId}**:\n${lines.join('\n')}`,
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error("Failed to get punishment history:", error.response?.data || error.message || error);
+    await interaction.reply({ content: '❌ Failed to fetch punishment history.', ephemeral: true });
+  }
+}
   });
 
   client.login(TOKEN);
