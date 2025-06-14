@@ -15,6 +15,7 @@ const punishCommand = new SlashCommandBuilder()
   .addStringOption(opt => opt.setName('type').setDescription('Type of punishment').setRequired(true).addChoices(
     { name: 'ban', value: 'ban' },
     { name: 'warn', value: 'warn' },
+    { name: 'toolban', value: 'toolban' },
   ))
   .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
