@@ -8,7 +8,9 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENTID;
 const GUILD_ID = process.env.GUILDID;
 
-const validTypes = ['ban', 'warn', 'toolban', 'kick'];
+const validTypes = ['ban', 'warn', 'toolban', 'kick', 'ipban'];
+
+const bannedIps = new Map();
 
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
@@ -19,6 +21,7 @@ const punishCommand = new SlashCommandBuilder()
     { name: 'warn', value: 'warn' },
     { name: 'toolban', value: 'toolban' },
     { name: 'kick', value: 'kick' },
+    { name: 'ipban', value: 'ipban' }
   ))
   .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
@@ -45,7 +48,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// In-memory data stores
 let punishments = {};
 let deletedPunishments = {};
 
@@ -86,12 +88,20 @@ app.post('/punishments/:userId', (req, res) => {
   data.ip = ip;
 
   if (!punishments[userId]) punishments[userId] = [];
-
   punishments[userId].push(data);
 
   if (ip) {
     if (!ipToUserIds[ip]) ipToUserIds[ip] = new Set();
     ipToUserIds[ip].add(userId);
+
+    if (data.type === 'ipban') {
+      bannedIps.set(ip, {
+        expiresAt: data.expiresAt,
+        userId,
+        reason: data.reason,
+        id: data.id
+      });
+    }
   }
 
   res.json({ success: true, id: data.id });
@@ -155,6 +165,19 @@ app.get('/check-alt/:userId', (req, res) => {
   });
 
   res.json({ alts: Array.from(altUsers) });
+});
+
+app.get('/check-ipban/:ip', (req, res) => {
+  const ip = req.params.ip;
+  const banInfo = bannedIps.get(ip);
+  if (!banInfo) return res.json({ banned: false });
+
+  if (banInfo.expiresAt && new Date(banInfo.expiresAt) < new Date()) {
+    bannedIps.delete(ip);
+    return res.json({ banned: false });
+  }
+
+  res.json({ banned: true, info: banInfo });
 });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
