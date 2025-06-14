@@ -8,7 +8,7 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENTID;
 const GUILD_ID = process.env.GUILDID;
 
-const validTypes = ['ban', 'warn', 'toolban', 'kick', 'mute'];
+const validTypes = ['ban', 'warn', 'toolban', 'kick'];
 
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
@@ -19,7 +19,6 @@ const punishCommand = new SlashCommandBuilder()
     { name: 'warn', value: 'warn' },
     { name: 'toolban', value: 'toolban' },
     { name: 'kick', value: 'kick' },
-    { name: 'mute', value: 'mute' },
   ))
   .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
@@ -162,6 +161,26 @@ async function start() {
         console.error("Failed to remove punishment:", error.response?.data || error.message || error);
         await interaction.reply({ content: '❌ Failed to remove punishment.', ephemeral: true });
       }
+      else if (interaction.commandName === 'history') {
+    const userId = interaction.options.getString('userid');
+
+    try {
+      const response = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
+      const data = response.data;
+
+      if (!data.length) {
+        await interaction.reply({ content: `ℹ️ No punishment history found for user ID **${userId}**.`, ephemeral: true });
+        return;
+      }
+
+      const punishment = data[0];
+      await interaction.reply({
+        content: `📄 Punishment history for **${userId}**:\n- Type: \`${punishment.type}\`\n- Reason: \`${punishment.reason}\`\n- Moderator: \`${punishment.moderator}\`\n- Expires: \`${punishment.expiresAt ?? 'Permanent'}\`\n- Created: \`${punishment.createdAt}\``,
+        ephemeral: true
+      });
+    } catch (error) {
+      console.error("Failed to get punishment history:", error.response?.data || error.message || error);
+      await interaction.reply({ content: '❌ Failed to fetch punishment history.', ephemeral: true });
     }
   });
 
