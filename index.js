@@ -91,18 +91,41 @@ app.post('/punishments/:userId', (req, res) => {
   punishments[userId].push(data);
 
   if (ip) {
-    if (!ipToUserIds[ip]) ipToUserIds[ip] = new Set();
-    ipToUserIds[ip].add(userId);
+  if (!ipToUserIds[ip]) ipToUserIds[ip] = new Set();
+  ipToUserIds[ip].add(userId);
 
-    if (data.type === 'ipban') {
-      bannedIps.set(ip, {
-        expiresAt: data.expiresAt,
-        userId,
-        reason: data.reason,
-        id: data.id
-      });
-    }
+  if (data.type === 'ipban') {
+    bannedIps.set(ip, {
+      expiresAt: data.expiresAt,
+      userId,
+      reason: data.reason,
+      id: data.id
+    });
+
+    // Ban all users on this IP
+    const allUsers = Array.from(ipToUserIds[ip]);
+    allUsers.forEach(uid => {
+      // Skip if user already has an active ban for that IP
+      const userPunishments = punishments[uid] || [];
+      const hasIpBan = userPunishments.some(pun => pun.type === 'ipban' && pun.ip === ip);
+
+      if (!hasIpBan) {
+        const banData = {
+          type: 'ipban',
+          reason: `IP ban from associated IP (${ip})`,
+          moderator: data.moderator,
+          duration: data.duration,
+          expiresAt: data.expiresAt,
+          createdAt: new Date().toISOString(),
+          id: crypto.randomUUID(),
+          ip: ip
+        };
+        if (!punishments[uid]) punishments[uid] = [];
+        punishments[uid].push(banData);
+      }
+    });
   }
+}
 
   res.json({ success: true, id: data.id });
 });
