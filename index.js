@@ -50,7 +50,6 @@ app.use(express.json());
 
 let punishments = {};
 let deletedPunishments = {};
-
 const ipToUserIds = {};
 
 function formatDateToLocaleShort(dateString, locale) {
@@ -106,7 +105,6 @@ app.post('/punishments/:userId', async (req, res) => {
 
       for (const otherUserId of userIdsOnIp) {
         if (otherUserId === userId) continue;
-        
         const otherUserPunishments = punishments[otherUserId] || [];
         const alreadyIpBanned = otherUserPunishments.some(pun =>
           pun.type === 'ipban' &&
@@ -130,7 +128,7 @@ app.post('/punishments/:userId', async (req, res) => {
       }
     }
   }
-  
+
   return res.json({ success: true, id: data.id });
 });
 
@@ -226,15 +224,10 @@ async function registerCommands() {
 
 async function start() {
   await registerCommands();
-  console.log('✅ Commands registered.');
 
-  app.listen(PORT, () => {
-    console.log(`✅ API running on port ${PORT}`);
-  });
+  app.listen(PORT);
 
-  client.once('ready', () => {
-    console.log(`✅ Discord bot logged in as ${client.user.tag}`);
-  });
+  client.once('ready', () => {});
 
   client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
@@ -276,69 +269,72 @@ async function start() {
         } else {
           await interaction.reply('❌ Failed to apply punishment.');
         }
-      } catch (error) {
+      } catch {
         await interaction.reply('❌ Error applying punishment.');
-        console.error(error);
       }
     }
     else if (interaction.commandName === 'delpunishment') {
       const userId = interaction.options.getString('userid');
       const punishId = interaction.options.getString('punishid');
-      const moderator = interaction.user.tag;
 
-      try {
-        const response = await axios.delete(`http://localhost:${PORT}/punishments/${userId}/${punishId}`);
-        if (response.data.success) {
-          await interaction.reply(`✅ Punishment ID ${punishId} deleted for user ${userId}.`);
-        } else {
-          await interaction.reply('❌ Failed to delete punishment.');
-        }
-      } catch (error) {
-        await interaction.reply('❌ Error deleting punishment.');
-        console.error(error);
+      if (!punishments[userId]) {
+        await interaction.reply({ content: `No punishments found for user ID ${userId}`, ephemeral: true });
+        return;
       }
+
+      const index = punishments[userId].findIndex(p => p.id === punishId);
+      if (index === -1) {
+        await interaction.reply({ content: 'Punishment ID not found.', ephemeral: true });
+        return;
+      }
+
+      punishments[userId].splice(index, 1);
+      if (!deletedPunishments[userId]) deletedPunishments[userId] = [];
+      deletedPunishments[userId].push({ id: punishId, deletedBy: interaction.user.tag, deletedAt: new Date().toISOString() });
+
+      await interaction.reply(`✅ Punishment ID ${punishId} removed.`);
     }
     else if (interaction.commandName === 'history') {
       const userId = interaction.options.getString('userid');
 
-      try {
-        const response = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
-        const data = response.data;
+      const userPunishments = punishments[userId] || [];
+      const userDeleted = deletedPunishments[userId] || [];
 
-        if (!data || data.length === 0) {
-          await interaction.reply('No punishments found.');
-          return;
-        }
-
-        let replyText = `Punishments for User ID ${userId}:\n`;
-        data.forEach(pun => {
-          replyText += `• ID: ${pun.id}\n  Type: ${pun.type}\n  Reason: ${pun.reason}\n  Moderator: ${pun.moderator}\n  Expires: ${formatDateToLocaleShort(pun.expiresAt, userLocale)}\n  Created: ${formatDateToLocaleShort(pun.createdAt, userLocale)}\n\n`;
-        });
-
-        if (replyText.length > 2000) replyText = replyText.slice(0, 1997) + '...';
-
-        await interaction.reply(replyText);
-      } catch (error) {
-        await interaction.reply('❌ Error fetching punishment history.');
-        console.error(error);
+      if (userPunishments.length + userDeleted.length === 0) {
+        await interaction.reply({ content: `No punishments found for user ID ${userId}`, ephemeral: true });
+        return;
       }
+
+      let reply = `**Punishment history for user ID ${userId}:**\n`;
+      const allPunishments = [...userPunishments, ...userDeleted];
+
+      for (const p of allPunishments) {
+        reply += `• ID: ${p.id} | Type: ${p.type} | Reason: ${p.reason} | Moderator: ${p.moderator || p.deletedBy || 'N/A'} | Expires: ${formatDateToLocaleShort(p.expiresAt, userLocale)}\n`;
+      }
+
+      if (reply.length > 2000) {
+        reply = reply.slice(0, 1997) + '...';
+      }
+
+      await interaction.reply({ content: reply, ephemeral: true });
     }
     else if (interaction.commandName === 'altcheck') {
       const userId = interaction.options.getString('userid');
 
-      try {
-        const response = await axios.get(`http://localhost:${PORT}/check-alt/${userId}`);
-        const alts = response.data.alts;
+      const userIps = new Set();
+      (punishments[userId] || []).forEach(p => { if (p.ip) userIps.add(p.ip); });
 
-        if (!alts || alts.length === 0) {
-          await interaction.reply('No alternate accounts found.');
-          return;
-        }
+      const altUsers = new Set();
 
-        await interaction.reply(`Possible alternate accounts sharing IP:\n${alts.join(', ')}`);
-      } catch (error) {
-        await interaction.reply('❌ Error fetching alt accounts.');
-        console.error(error);
+      userIps.forEach(ip => {
+        const users = ipToUserIds[ip];
+        if (users) users.forEach(u => { if (u !== userId) altUsers.add(u); });
+      });
+
+      if (altUsers.size === 0) {
+        await interaction.reply(`No alt accounts found for user ID ${userId}.`);
+      } else {
+        await interaction.reply(`Possible alt accounts for user ID ${userId}: ${Array.from(altUsers).join(', ')}`);
       }
     }
   });
