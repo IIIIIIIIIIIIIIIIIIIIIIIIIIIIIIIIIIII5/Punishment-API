@@ -8,7 +8,7 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENTID;
 const GUILD_ID = process.env.GUILDID;
 
-const validTypes = ['ban', 'warn', 'toolban', 'kick'];
+const validTypes = ['ban', 'jailban', 'warn', 'toolban', 'kick'];
 
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
@@ -17,6 +17,7 @@ const punishCommand = new SlashCommandBuilder()
   .addStringOption(opt => opt.setName('type').setDescription('Type of punishment').setRequired(true).addChoices(
     { name: 'ban', value: 'ban' },
     { name: 'warn', value: 'warn' },
+    { name: 'jailban', value: 'jailban' },
     { name: 'toolban', value: 'toolban' },
     { name: 'kick', value: 'kick' },
   ))
