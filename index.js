@@ -221,7 +221,7 @@ async function start() {
         const historyText = data.map(p => {
           const date = formatDateToLocaleShort(p.createdAt, userLocale);
           const until = formatDateToLocaleShort(p.expiresAt, userLocale);
-          return `• **${p.type}** on ${date} - Reason: *${p.reason}* - Until: ${until}`;
+          return `• **${p.type}** on ${date} - Reason: *${p.reason}* - Until: ${until} - ID: \`${p.id}\``;
         }).join('\n');
 
         await interaction.reply(`📄 **Punishment History for ${userId}:**\n${historyText}`);
