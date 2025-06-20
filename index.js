@@ -117,7 +117,7 @@ client.on('interactionCreate', async interaction => {
     const reason = interaction.options.getString('reason');
     const durationSec = parseDuration(duration);
     if (durationSec === null && duration !== '0') {
-      return interaction.reply({ content: 'Invalid duration format.', ephemeral: true });
+      return interaction.reply({ content: 'Invalid duration format.', ephemeral: false });
     }
 
     const payload = {
@@ -129,9 +129,9 @@ client.on('interactionCreate', async interaction => {
 
     try {
       const res = await axios.post(`http://localhost:${PORT}/punishments/${userId}`, payload);
-      interaction.reply({ content: `Punishment applied. ID: ${res.data.id}`, ephemeral: true });
+      interaction.reply({ content: `Punishment applied. ID: ${res.data.id}`, ephemeral: false });
     } catch {
-      interaction.reply({ content: 'Failed to apply punishment.', ephemeral: true });
+      interaction.reply({ content: 'Failed to apply punishment.', ephemeral: false });
     }
   }
 
@@ -139,9 +139,9 @@ client.on('interactionCreate', async interaction => {
     const punishId = interaction.options.getString('punishid');
     try {
       await axios.delete(`http://localhost:${PORT}/punishments/${userId}/${punishId}`);
-      interaction.reply({ content: 'Punishment deleted.', ephemeral: true });
+      interaction.reply({ content: 'Punishment deleted.', ephemeral: false });
     } catch {
-      interaction.reply({ content: 'Failed to delete punishment.', ephemeral: true });
+      interaction.reply({ content: 'Failed to delete punishment.', ephemeral: false });
     }
   }
 
@@ -149,12 +149,12 @@ client.on('interactionCreate', async interaction => {
     try {
       const res = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
       const data = res.data;
-      if (!data.length) return interaction.reply({ content: 'No punishments found.', ephemeral: true });
+      if (!data.length) return interaction.reply({ content: 'No punishments found.', ephemeral: false });
 
       const lines = data.map(p => `**ID:** ${p.id}\n**Type:** ${p.type}\n**Reason:** ${p.reason}\n**Moderator:** ${p.moderator}\n**Expires:** ${p.expiresAt || 'Permanent'}`);
-      interaction.reply({ content: lines.join('\n\n'), ephemeral: true });
+      interaction.reply({ content: lines.join('\n\n'), ephemeral: false });
     } catch {
-      interaction.reply({ content: 'Failed to fetch history.', ephemeral: true });
+      interaction.reply({ content: 'Failed to fetch history.', ephemeral: false });
     }
   }
 });
