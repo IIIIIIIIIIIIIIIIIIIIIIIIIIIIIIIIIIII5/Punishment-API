@@ -11,24 +11,14 @@ const GUILD_ID = process.env.GUILDID;
 const validTypes = ['ban', 'warn', 'toolban', 'kick', 'mute'];
 
 function parseDuration(input) {
-  const units = {
-    y: 31536000,
-    w: 604800,
-    d: 86400,
-    h: 3600,
-    m: 60,
-    s: 1
-  };
-
+  const units = { y: 31536000, w: 604800, d: 86400, h: 3600, m: 60, s: 1 };
   let totalSeconds = 0;
   const matches = input.match(/(\d+)([ywdhms])/gi);
   if (!matches) return null;
-
   for (const match of matches) {
     const [, num, unit] = match.match(/(\d+)([ywdhms])/i);
     totalSeconds += parseInt(num) * units[unit.toLowerCase()];
   }
-
   return totalSeconds;
 }
 
@@ -63,124 +53,85 @@ app.use(cors());
 app.use(express.json());
 
 let punishments = {};
-let deletedPunishments = {};
 
-function filterExpired(arr) {
-  const now = Date.now();
-  return arr.filter(p => !p.expiresAt || new Date(p.expiresAt).getTime() > now);
-}
-
-function formatDateToLocaleShort(dateString, locale) {
-  if (!dateString) return 'Permanent';
-  return new Date(dateString).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
+app.get('/punishments/:userId', (req, res) => {
+  const userId = String(req.params.userId);
+  const userPunishments = punishments[userId] || [];
+  res.json(userPunishments);
+});
 
 app.post('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
   const { type, reason, moderator, duration } = req.body;
   if (!type || !reason || !moderator || !validTypes.includes(type)) {
-    return res.status(400).json({ success: false, message: "Invalid input" });
+    return res.status(400).json({ success: false, message: 'Invalid input' });
   }
 
   const durationSeconds = parseInt(duration);
   const expiresAt = durationSeconds > 0 ? new Date(Date.now() + durationSeconds * 1000).toISOString() : null;
   const id = crypto.randomUUID();
-  const data = {
-    id,
-    type,
-    reason,
-    moderator,
-    duration: durationSeconds,
-    expiresAt,
-    createdAt: new Date().toISOString()
-  };
+  const data = { id, type, reason, moderator, duration: durationSeconds, expiresAt };
 
-  if (!punishments[userId]) punishments[userId] = [];
-
-  punishments[userId] = punishments[userId].filter(p => !(p.type === 'toolban' && p.expiresAt && new Date(p.expiresAt).getTime() <= Date.now()));
-
+  punishments[userId] = punishments[userId] || [];
   punishments[userId].push(data);
 
   res.json({ success: true, id });
 });
 
-app.get('/punishments/:userId', (req, res) => {
-  const userId = String(req.params.userId);
-  if (punishments[userId]) {
-    punishments[userId] = filterExpired(punishments[userId]);
-  }
-  const active = punishments[userId] || [];
-  const deleted = deletedPunishments[userId] || [];
-  const all = [...active, ...deleted];
-  if (all.length === 0) return res.status(404).json([]);
-  res.json(all);
-});
-
 app.delete('/punishments/:userId/:punishId', (req, res) => {
-  const { userId, punishId } = req.params;
-
+  const userId = String(req.params.userId);
+  const punishId = String(req.params.punishId);
   if (!punishments[userId]) {
-    return res.status(404).json({ success: false, message: "User not found" });
+    return res.status(404).json({ success: false, message: 'User not found' });
   }
 
-  const index = punishments[userId].findIndex(p => p.id === punishId);
-  if (index === -1) {
-    return res.status(404).json({ success: false, message: "Punishment not found" });
+  const before = punishments[userId].length;
+  punishments[userId] = punishments[userId].filter(p => p.id !== punishId);
+  const after = punishments[userId].length;
+
+  if (before === after) {
+    return res.status(404).json({ success: false, message: 'Punishment not found' });
   }
 
-  const removed = punishments[userId].splice(index, 1)[0];
-  if (!deletedPunishments[userId]) deletedPunishments[userId] = [];
-  deletedPunishments[userId].push(removed);
-
-  return res.json({ success: true, message: "Punishment deleted", deleted: removed });
+  res.json({ success: true, message: 'Punishment deleted' });
 });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+client.once('ready', () => { console.log('Bot online'); });
+
 const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-client.once('ready', () => {
-  console.log(`Bot logged in as ${client.user.tag}`);
-});
-
 (async () => {
-  try {
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
-      body: [punishCommand.toJSON(), delPunishmentCommand.toJSON(), historyCommand.toJSON()]
-    });
-    console.log('Commands registered.');
-  } catch (err) {
-    console.error('Error registering commands:', err);
-  }
+  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {
+    body: [punishCommand, delPunishmentCommand, historyCommand],
+  });
+  client.login(TOKEN);
 })();
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   const userId = interaction.options.getString('userid');
-  if (!userId || !/^\d+$/.test(userId)) {
-    return interaction.reply({ content: 'Invalid Roblox user ID.', ephemeral: false });
-  }
-
   if (interaction.commandName === 'punish') {
     const type = interaction.options.getString('type');
+    const duration = interaction.options.getString('duration');
     const reason = interaction.options.getString('reason');
-    const durationStr = interaction.options.getString('duration');
-    
-    const seconds = durationStr === '0' ? 0 : parseDuration(durationStr);
-    if (seconds === null && durationStr !== '0') {
-      return interaction.reply({ content: '❌ Invalid duration format.', ephemeral: false });
+    const durationSec = parseDuration(duration);
+    if (durationSec === null && duration !== '0') {
+      return interaction.reply({ content: 'Invalid duration format.', ephemeral: true });
     }
 
+    const payload = {
+      type,
+      reason,
+      moderator: interaction.user.tag,
+      duration: duration === '0' ? 0 : durationSec,
+    };
+
     try {
-      const response = await axios.post(`http://localhost:${PORT}/punishments/${userId}`, {
-        type,
-        reason,
-        moderator: interaction.user.username,
-        duration: seconds
-      });
-      interaction.reply({ content: `✅ Punishment applied (ID: ${response.data.id})`, ephemeral: false });
-    } catch (error) {
-      interaction.reply({ content: '❌ Failed to apply punishment.', ephemeral: false });
+      const res = await axios.post(`http://localhost:${PORT}/punishments/${userId}`, payload);
+      interaction.reply({ content: `Punishment applied. ID: ${res.data.id}`, ephemeral: true });
+    } catch {
+      interaction.reply({ content: 'Failed to apply punishment.', ephemeral: true });
     }
   }
 
@@ -188,27 +139,25 @@ client.on('interactionCreate', async interaction => {
     const punishId = interaction.options.getString('punishid');
     try {
       await axios.delete(`http://localhost:${PORT}/punishments/${userId}/${punishId}`);
-      interaction.reply({ content: `✅ Punishment ${punishId} removed.`, ephemeral: false });
-    } catch (error) {
-      interaction.reply({ content: '❌ Failed to delete punishment.', ephemeral: false });
+      interaction.reply({ content: 'Punishment deleted.', ephemeral: true });
+    } catch {
+      interaction.reply({ content: 'Failed to delete punishment.', ephemeral: true });
     }
   }
 
   if (interaction.commandName === 'history') {
     try {
       const res = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
-      const list = res.data.map(p => {
-        const expires = formatDateToLocaleShort(p.expiresAt, 'en-US');
-        return `• **[${p.type.toUpperCase()}]** (ID: \`${p.id}\`) Reason: ${p.reason} | By: ${p.moderator} | Expires: ${expires}`;
-      });
-      interaction.reply({ content: list.join('\n'), ephemeral: false });
+      const data = res.data;
+      if (!data.length) return interaction.reply({ content: 'No punishments found.', ephemeral: true });
+
+      const lines = data.map(p => `**ID:** ${p.id}\n**Type:** ${p.type}\n**Reason:** ${p.reason}\n**Moderator:** ${p.moderator}\n**Expires:** ${p.expiresAt || 'Permanent'}`);
+      interaction.reply({ content: lines.join('\n\n'), ephemeral: true });
     } catch {
-      interaction.reply({ content: '⚠️ No punishments found.', ephemeral: false });
+      interaction.reply({ content: 'Failed to fetch history.', ephemeral: true });
     }
   }
 });
 
 client.login(TOKEN);
-app.listen(PORT, () => {
-  console.log(`API Server running on port ${PORT}`);
-});
+app.listen(PORT);
