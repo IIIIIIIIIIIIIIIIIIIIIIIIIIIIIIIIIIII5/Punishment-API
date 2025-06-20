@@ -138,7 +138,7 @@ client.on('interactionCreate', async interaction => {
 
   const userId = interaction.options.getString('userid');
   if (!userId || !/^\d+$/.test(userId)) {
-    return interaction.reply({ content: 'Invalid Roblox user ID.', ephemeral: true });
+    return interaction.reply({ content: 'Invalid Roblox user ID.', ephemeral: false });
   }
 
   if (interaction.commandName === 'punish') {
@@ -153,9 +153,9 @@ client.on('interactionCreate', async interaction => {
         moderator: interaction.user.username,
         duration
       });
-      interaction.reply({ content: `✅ Punishment applied (ID: ${response.data.id})`, ephemeral: true });
+      interaction.reply({ content: `✅ Punishment applied (ID: ${response.data.id})`, ephemeral: false });
     } catch (error) {
-      interaction.reply({ content: '❌ Failed to apply punishment.', ephemeral: true });
+      interaction.reply({ content: '❌ Failed to apply punishment.', ephemeral: false });
     }
   }
 
@@ -163,9 +163,9 @@ client.on('interactionCreate', async interaction => {
     const punishId = interaction.options.getString('punishid');
     try {
       await axios.delete(`http://localhost:${PORT}/punishments/${userId}/${punishId}`);
-      interaction.reply({ content: `✅ Punishment ${punishId} removed.`, ephemeral: true });
+      interaction.reply({ content: `✅ Punishment ${punishId} removed.`, ephemeral: false });
     } catch (error) {
-      interaction.reply({ content: '❌ Failed to delete punishment.', ephemeral: true });
+      interaction.reply({ content: '❌ Failed to delete punishment.', ephemeral: false });
     }
   }
 
@@ -174,11 +174,11 @@ client.on('interactionCreate', async interaction => {
       const res = await axios.get(`http://localhost:${PORT}/punishments/${userId}`);
       const list = res.data.map(p => {
         const expires = formatDateToLocaleShort(p.expiresAt, 'en-US');
-        return `• **[${p.type.toUpperCase()}]** Reason: ${p.reason} | By: ${p.moderator} | Expires: ${expires}`;
+        return `• **[${p.type.toUpperCase()}]** (ID: \`${p.id}\`) Reason: ${p.reason} | By: ${p.moderator} | Expires: ${expires}`;
       });
-      interaction.reply({ content: list.join('\n'), ephemeral: true });
+      interaction.reply({ content: list.join('\n'), ephemeral: false });
     } catch {
-      interaction.reply({ content: '⚠️ No punishments found.', ephemeral: true });
+      interaction.reply({ content: '⚠️ No punishments found.', ephemeral: false });
     }
   }
 });
