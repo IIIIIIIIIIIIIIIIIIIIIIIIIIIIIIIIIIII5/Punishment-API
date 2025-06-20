@@ -118,20 +118,21 @@ app.get('/punishments/:userId', (req, res) => {
 
 app.delete('/punishments/:userId/:punishId', (req, res) => {
   const { userId, punishId } = req.params;
+
   if (!punishments[userId]) {
-    return res.status(404).json({ success: false, message: 'User not found' });
+    return res.status(404).json({ success: false, message: "User not found" });
   }
 
   const index = punishments[userId].findIndex(p => p.id === punishId);
   if (index === -1) {
-    return res.status(404).json({ success: false, message: 'Punishment not found' });
+    return res.status(404).json({ success: false, message: "Punishment not found" });
   }
 
-  const [removed] = punishments[userId].splice(index, 1);
+  const removed = punishments[userId].splice(index, 1)[0];
   if (!deletedPunishments[userId]) deletedPunishments[userId] = [];
   deletedPunishments[userId].push(removed);
 
-  res.json({ success: true, message: 'Punishment deleted' });
+  return res.json({ success: true, message: "Punishment deleted", deleted: removed });
 });
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
