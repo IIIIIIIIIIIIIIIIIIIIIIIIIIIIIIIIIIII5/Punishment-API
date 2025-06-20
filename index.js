@@ -12,12 +12,12 @@ const validTypes = ['ban', 'warn', 'toolban', 'kick', 'mute'];
 
 function parseDuration(input) {
   const units = {
-    y: 31536000, // year
-    w: 604800,   // week
-    d: 86400,    // day
-    h: 3600,     // hour
-    m: 60,       // minute
-    s: 1         // second
+    y: 31536000,
+    w: 604800,
+    d: 86400,
+    h: 3600,
+    m: 60,
+    s: 1
   };
 
   let totalSeconds = 0;
