@@ -10,6 +10,28 @@ const GUILD_ID = process.env.GUILDID;
 
 const validTypes = ['ban', 'warn', 'toolban', 'kick', 'mute'];
 
+function parseDuration(input) {
+  const units = {
+    y: 31536000, // year
+    w: 604800,   // week
+    d: 86400,    // day
+    h: 3600,     // hour
+    m: 60,       // minute
+    s: 1         // second
+  };
+
+  let totalSeconds = 0;
+  const matches = input.match(/(\d+)([ywdhms])/gi);
+  if (!matches) return null;
+
+  for (const match of matches) {
+    const [, num, unit] = match.match(/(\d+)([ywdhms])/i);
+    totalSeconds += parseInt(num) * units[unit.toLowerCase()];
+  }
+
+  return totalSeconds;
+}
+
 const punishCommand = new SlashCommandBuilder()
   .setName('punish')
   .setDescription('Apply a punishment to a Roblox user')
@@ -21,7 +43,7 @@ const punishCommand = new SlashCommandBuilder()
     { name: 'kick', value: 'kick' },
     { name: 'mute', value: 'mute' },
   ))
-  .addIntegerOption(opt => opt.setName('duration').setDescription('Duration in seconds (0 = permanent)').setRequired(true))
+  .addStringOption(opt => opt.setName('duration').setDescription('Duration (e.g., 1d2h, 0 = permanent)').setRequired(true))
   .addStringOption(opt => opt.setName('reason').setDescription('Reason for punishment').setRequired(true));
 
 const delPunishmentCommand = new SlashCommandBuilder()
@@ -60,14 +82,15 @@ app.post('/punishments/:userId', (req, res) => {
     return res.status(400).json({ success: false, message: "Invalid input" });
   }
 
-  const expiresAt = duration > 0 ? new Date(Date.now() + duration * 1000).toISOString() : null;
+  const durationSeconds = parseInt(duration);
+  const expiresAt = durationSeconds > 0 ? new Date(Date.now() + durationSeconds * 1000).toISOString() : null;
   const id = crypto.randomUUID();
   const data = {
     id,
     type,
     reason,
     moderator,
-    duration,
+    duration: durationSeconds,
     expiresAt,
     createdAt: new Date().toISOString()
   };
@@ -83,17 +106,13 @@ app.post('/punishments/:userId', (req, res) => {
 
 app.get('/punishments/:userId', (req, res) => {
   const userId = String(req.params.userId);
-
   if (punishments[userId]) {
     punishments[userId] = filterExpired(punishments[userId]);
   }
-
   const active = punishments[userId] || [];
   const deleted = deletedPunishments[userId] || [];
-
   const all = [...active, ...deleted];
   if (all.length === 0) return res.status(404).json([]);
-
   res.json(all);
 });
 
@@ -144,14 +163,19 @@ client.on('interactionCreate', async interaction => {
   if (interaction.commandName === 'punish') {
     const type = interaction.options.getString('type');
     const reason = interaction.options.getString('reason');
-    const duration = interaction.options.getInteger('duration');
+    const durationStr = interaction.options.getString('duration');
+    
+    const seconds = durationStr === '0' ? 0 : parseDuration(durationStr);
+    if (seconds === null && durationStr !== '0') {
+      return interaction.reply({ content: '❌ Invalid duration format.', ephemeral: false });
+    }
 
     try {
       const response = await axios.post(`http://localhost:${PORT}/punishments/${userId}`, {
         type,
         reason,
         moderator: interaction.user.username,
-        duration
+        duration: seconds
       });
       interaction.reply({ content: `✅ Punishment applied (ID: ${response.data.id})`, ephemeral: false });
     } catch (error) {
@@ -184,7 +208,6 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(TOKEN);
-
 app.listen(PORT, () => {
   console.log(`API Server running on port ${PORT}`);
 });
