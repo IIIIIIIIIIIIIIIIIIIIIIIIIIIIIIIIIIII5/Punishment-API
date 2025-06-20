@@ -159,5 +159,4 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-client.login(TOKEN);
 app.listen(PORT);
