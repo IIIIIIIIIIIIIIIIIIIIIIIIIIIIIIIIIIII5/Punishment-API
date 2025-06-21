@@ -10,6 +10,8 @@ const GUILD_ID = process.env.GUILDID;
 
 const validTypes = ['ban', 'warn', 'toolban', 'kick', 'mute'];
 
+let punishmentHistory = {};
+
 function parseDuration(input) {
   const units = { y: 31536000, w: 604800, d: 86400, h: 3600, m: 60, s: 1 };
   let totalSeconds = 0;
@@ -67,13 +69,20 @@ app.post('/punishments/:userId', (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid input' });
   }
 
-  const durationSeconds = parseInt(duration);
+  const durationSeconds = duration === 0 ? 0 : parseDuration(duration);
+  if (durationSeconds === null && duration !== 0) {
+    return res.status(400).json({ success: false, message: 'Invalid duration format' });
+  }
+
   const expiresAt = durationSeconds > 0 ? new Date(Date.now() + durationSeconds * 1000).toISOString() : null;
   const id = crypto.randomUUID();
-  const data = { id, type, reason, moderator, duration: durationSeconds, expiresAt };
+  const data = { id, type, reason, moderator, duration: durationSeconds, expiresAt, active: true };
 
   punishments[userId] = punishments[userId] || [];
   punishments[userId].push(data);
+
+  punishmentHistory[userId] = punishmentHistory[userId] || [];
+  punishmentHistory[userId].push(data);
 
   res.json({ success: true, id });
 });
