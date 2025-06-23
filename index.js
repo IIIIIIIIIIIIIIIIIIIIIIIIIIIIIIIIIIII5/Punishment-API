@@ -13,12 +13,13 @@ const validTypes = ['ban', 'warn', 'toolban', 'kick', 'mute'];
 let punishmentHistory = {};
 
 function parseDuration(input) {
+  const str = String(input);
   const units = { y: 31536000, w: 604800, d: 86400, h: 3600, m: 60, s: 1 };
-  let totalSeconds = 0;
 
-  const matches = input?.match(/(\d+)([ywdhms])/gi);
+  const matches = str.match(/(\d+)([ywdhms])/gi);
   if (!matches) return null;
 
+  let totalSeconds = 0;
   for (const match of matches) {
     const parts = match.match(/(\d+)([ywdhms])/i);
     if (!parts) continue;
