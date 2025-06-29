@@ -75,7 +75,7 @@ app.post('/punishments/:userId', (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid input' });
   }
 
-  const durationSeconds = duration === 0 ? 0 : parseDuration(duration);
+  const durationSeconds = duration === 0 ? 0 : parseDuration(String(duration));
   if (durationSeconds === null && duration !== 0) {
     return res.status(400).json({ success: false, message: 'Invalid duration format' });
   }
