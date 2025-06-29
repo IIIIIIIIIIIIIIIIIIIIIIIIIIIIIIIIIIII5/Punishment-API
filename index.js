@@ -174,4 +174,8 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+app.get('/', (req, res) => {
+  res.send('Punishment API is running.');
+});
+
 app.listen(PORT);
